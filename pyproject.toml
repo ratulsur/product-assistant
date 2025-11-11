@@ -1,7 +1,9 @@
 [project]
-name = "ecommerce product assistant"
+name = "ecommerce-product-assistant"
 version = "0.1.0"
 description = "chatbot for customer assistant process"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "fastapi>=0.121.1",
+]
