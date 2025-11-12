@@ -4,3 +4,7 @@ venv
 build/
 dist/
 wheels/
+*.log
+.ipynb_checkpoints/
+archive/
+.vscode/

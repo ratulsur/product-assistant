@@ -1,27 +1,18 @@
-# utils/config_loader.py
 from pathlib import Path
-import os
 import yaml
 
-def _project_root() -> Path:
-    # .../utils/config_loader.py -> parents[1] == project root
-    return Path(__file__).resolve().parents[1]
-
-def load_config(config_path: str | None = None) -> dict:
+def load_config():
     """
-    Resolve config path reliably irrespective of CWD.
-    Priority: explicit arg > CONFIG_PATH env > <project_root>/config/config.yaml
+    Loads the YAML configuration file from product_assistant/config/config.yaml
+    regardless of current working directory.
     """
-    env_path = os.getenv("CONFIG_PATH")
-    if config_path is None:
-        config_path = env_path or str(_project_root() / "config" / "config.yaml")
+    # This file lives in product_assistant/utils/config_loader.py
+    # We want: product_assistant/config/config.yaml
+    base_dir = Path(__file__).resolve().parents[1]  # -> product_assistant/
+    config_path = base_dir / "config" / "config.yaml"
 
-    path = Path(config_path)
-    if not path.is_absolute():
-        path = _project_root() / path
+    if not config_path.exists():
+        raise FileNotFoundError(f"Config file not found: {config_path}")
 
-    if not path.exists():
-        raise FileNotFoundError(f"Config file not found: {path}")
-
-    with open(path, "r", encoding="utf-8") as f:
+    with open(config_path, "r", encoding="utf-8") as f:
         return yaml.safe_load(f) or {}
