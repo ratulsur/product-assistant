@@ -34,7 +34,7 @@ class AgenticRAG:
         self.mcp_client = MultiServerMCPClient({
             "product_retriever": {
                 "command": "python",
-                "args": ["prod_assistant/mcp_servers/product_search_server.py"],  # absolute path recommended
+                "args": ["product_assistant/mcp_servers/product_search_server.py"],  # absolute path recommended
                 "transport": "stdio"
             }
         })
