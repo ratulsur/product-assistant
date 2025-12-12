@@ -1,5 +1,7 @@
 import os
+import asyncio
 from dotenv import load_dotenv
+
 from langchain_astradb import AstraDBVectorStore
 from langchain.retrievers.document_compressors import LLMChainFilter
 from langchain.retrievers import ContextualCompressionRetriever
@@ -7,6 +9,11 @@ from langchain.retrievers import ContextualCompressionRetriever
 from product_assistant.utils.config_loader import load_config
 from product_assistant.utils.model_loader import ModelLoader
 
+# RAGAS evaluation (import explicitly)
+from product_assistant.evaluation.ragas_eval import (
+    evaluate_context_precision,
+    evaluate_response_relevancy,
+)
 
 
 class Retriever:
@@ -14,11 +21,12 @@ class Retriever:
         self.model_loader = ModelLoader()
         self.config = load_config()
         self._load_env_variables()
+
         self.vstore = None
         self.retriever_instance = None
 
     def _load_env_variables(self):
-        """loads the environment variables"""
+        """Load and validate required environment variables"""
         load_dotenv()
 
         required_vars = [
@@ -28,21 +36,19 @@ class Retriever:
             "ASTRA_DB_KEYSPACE",
         ]
 
-        missing_vars = [var for var in required_vars if os.getenv(var) is None]
-        if missing_vars:
-            raise EnvironmentError(f"Missing env vars: {missing_vars}")
+        missing = [v for v in required_vars if not os.getenv(v)]
+        if missing:
+            raise EnvironmentError(f"Missing env vars: {missing}")
 
-        self.google_api_key = os.getenv("GOOGLE_API_KEY")
         self.db_api_endpoint = os.getenv("ASTRA_DB_API_ENDPOINT")
         self.db_application_token = os.getenv("ASTRA_DB_APPLICATION_TOKEN")
         self.db_keyspace = os.getenv("ASTRA_DB_KEYSPACE")
 
     def load_retriever(self):
-        """loads the retriever"""
-
-        # 1) Lazy init vector store
+        """Lazy-load vector store and retriever"""
         if self.vstore is None:
             collection_name = self.config["astra_db"]["collection_name"]
+
             self.vstore = AstraDBVectorStore(
                 embedding=self.model_loader.load_embeddings(),
                 collection_name=collection_name,
@@ -51,17 +57,15 @@ class Retriever:
                 namespace=self.db_keyspace,
             )
 
-        # 2) Lazy init retriever
         if self.retriever_instance is None:
             top_k = self.config.get("retriever", {}).get("top_k", 3)
 
-            mmr_retriever = self.vstore.as_retriever(
+            base_retriever = self.vstore.as_retriever(
                 search_type="mmr",
                 search_kwargs={
                     "k": top_k,
                     "fetch_k": 20,
                     "lambda_mult": 0.7,
-                    "score_threshold": 0.6,
                 },
             )
 
@@ -69,49 +73,62 @@ class Retriever:
             compressor = LLMChainFilter.from_llm(llm)
 
             self.retriever_instance = ContextualCompressionRetriever(
+                base_retriever=base_retriever,
                 base_compressor=compressor,
-                base_retriever=mmr_retriever,
             )
 
         return self.retriever_instance
 
-    def call_retriever(self, query):
-        """calls the retriever into the pipeline"""
+    def retrieve(self, query: str):
+        """Public retrieval API"""
         retriever = self.load_retriever()
         return retriever.invoke(query)
 
 
-def _format_docs(docs) -> str:
+def format_docs(docs) -> list[str]:
+    """Convert LangChain Documents → strings for RAGAS"""
     if not docs:
-        return "No relevant documents found."
+        return []
 
-    formatted_chunks = []
+    formatted = []
     for d in docs:
         meta = d.metadata or {}
-        formatted = (
-            f"Title: {meta.get('product_title','N/A')}\n"
-            f"Price: {meta.get('price','N/A')}\n"
-            f"Rating: {meta.get('rating','N/A')}\n"
+        formatted.append(
+            f"Title: {meta.get('product_title', 'N/A')}\n"
+            f"Price: {meta.get('price', 'N/A')}\n"
+            f"Rating: {meta.get('rating', 'N/A')}\n"
             f"Reviews:\n{d.page_content.strip()}"
         )
-        formatted_chunks.append(formatted)
 
-    return "\n\n---\n\n".join(formatted_chunks)
+    return formatted
 
 
+# -------------------------------------------------------------------
+# CLI / test runner
+# -------------------------------------------------------------------
 if __name__ == "__main__":
-    user_query = "can you suggest some good smartphones under Rs 10000?"
-    retriever_obj = Retriever()
-    retrieved_docs = retriever_obj.call_retriever(user_query)
 
-    retrieved_contexts = [_format_docs(retrieved_docs)]
+    async def main():
+        user_query = "can you suggest some good smartphones under Rs 10000?"
 
-    # Fake response for testing
-    response = "Some good phones under Rs 10,000 are ..."
+        retriever = Retriever()
+        docs = retriever.retrieve(user_query)
 
-    context_score = evaluate_context_precision(user_query, response, retrieved_contexts)
-    relevancy_score = evaluate_response_relevancy(user_query, response, retrieved_contexts)
+        retrieved_contexts = format_docs(docs)
 
-    print("\n--- Evaluation Metrics ---")
-    print("Context Precision Score:", context_score)
-    print("Response Relevancy Score:", relevancy_score)
+        # Fake response (for testing only)
+        response = "Some good phones under Rs 10,000 are Redmi A2, Realme Narzo, and Samsung Galaxy F04."
+
+        context_score = await evaluate_context_precision(
+            user_query, response, retrieved_contexts
+        )
+
+        relevancy_score = await evaluate_response_relevancy(
+            user_query, response, retrieved_contexts
+        )
+
+        print("\n--- Evaluation Metrics ---")
+        print("Context Precision:", context_score)
+        print("Response Relevancy:", relevancy_score)
+
+    asyncio.run(main())
