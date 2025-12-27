@@ -16,10 +16,10 @@ class AgenticRAG:
     AgenticRAG pipeline using LangGraph
     """
 
-    class AgenticState(TypedDict):
+class AgenticState(TypedDict):
         messages: Annotated[Sequence[BaseMessage], add_messages]
 
-    def __init__(self):
+def __init__(self):
         self.retriever_obj = Retriever()
         self.model_loader = ModelLoader()
         self.llm_loader = self.model_loader.load_llm()
@@ -27,7 +27,7 @@ class AgenticRAG:
         self.workflow = self._build_workflow()
         self.app = self.workflow.compile(checkpointer = self.checkpointer)
 
-    def _format_docs(self, docs) -> str:
+def _format_docs(self, docs) -> str:
         if not docs:
             return "no relevant docs found"
         formatted_chunks = []
@@ -43,5 +43,22 @@ class AgenticRAG:
 
         return "\n\n---\n\n".join(formatted_chunks)
     
-    
+def _ai_assistant(self, state: AgenticState):
+      print("---CALL ASSISTANT---")
+      messages = state["messages"]
+      last_message = messages[-1].content
 
+      if any (word in last_message.lower() for word in ["price", "review","product" ]):
+            return {"messages" : [HumanMessage(content="TOOL: retriever")]}
+      else:
+            prompt = ChatPromptTemplate.from_template(
+                  "you are a helpful assistant. Answer the user directly.\n\nQuestion: {question}\nAnswer"
+            )
+            chain = prompt | self.llm | StrOutputParser()
+            response = chain.invoke({"question":last_message})
+            return {"messages": [HumanMessage(content=response)]}
+
+def _vector_retriever(self, state: AgenticState):
+      print("--RETRIEVER--")
+      query = state["messages"][-1].content
+      
