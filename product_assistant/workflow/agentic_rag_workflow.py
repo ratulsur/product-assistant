@@ -61,4 +61,56 @@ def _ai_assistant(self, state: AgenticState):
 def _vector_retriever(self, state: AgenticState):
       print("--RETRIEVER--")
       query = state["messages"][-1].content
+      retriever = self.retriever_obj.load_retriever()
+      docs = retriever.invoke(query)
+      context = self._format_docs(docs)
+      return {"messages": [HumanMessage(content=context)]}
+
+def _grade_documents(self, state:AgenticState) -> Literal["generator", "rewriter"]:
+      print("--GRADER--")
+      question = state["messages"][0].content
+      docs = state["messages"][-1].content
+
+      prompt = PromptTemplate(
+            template="""you are a grader. Question: {question}\nDocs :{docs}\n
+            Are the docs relevant to the question. please answer in "yes" or "no"
+""",
+            input_variables=["question", "docs"],
+      )
+      chain = prompt | self.llm | StrOutputParser()
+      score = chain.invoke({"question": question, "docs": docs})
+      return "generator" if "yes" in score.lower() else "rewriter"
+
+def _generate(self, state: AgenticState):
+      print("--GENERATE--")
+      question = state["messages"][0].content
+      docs = state["messages"][-1].content
+
+      prompt = ChatPromptTemplate.from_template(
+            PROMPT_REGISTRY[PromptType.PRODUCT_BOT].template
+            )
+      chain = prompt | self.llm | StrOutputParser()
+      response = chain.invoke({"context": docs, "question": question})
+      return {"messages": [HumanMessage(content=response)]}
+
+def _rewrite(self, state: AgenticState):
+      print("--REWRITE--")
+      question = state["messages"][0].content
+      new_q = self.llm.invoke(
+            [HumanMessage(content=f"Rewrite the query in a clearer way: {question}")]
+
+      )
+      return {"messages": [HumanMessage(content=new_q.content)]}
+
+def _build_workflow(self):
+      workflow = StateGraph(self.AgentState)
+      workflow.add_node("Assistant", self._ai_assistant)
+      workflow.add_node("Retriever", self._vector_assistant)
+      workflow.add_node("Generator", self._generate)
+      workflow.add_node("Rewriter", self._rewrite)
+
+      workflow.add_edge(START, "Assistant")
+      workflow.add_conditional_edges(
+            
+      )
       
