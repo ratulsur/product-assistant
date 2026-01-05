@@ -108,17 +108,17 @@ if __name__ == "__main__":
 
         # Test Embeddings
         embeddings = loader.load_embeddings()
-        print("✅ Embedding model loaded:", embeddings)
+        print("Embedding model loaded:", embeddings)
 
         vec = embeddings.embed_query("Hello world!")
-        print("✅ Embedding vector length:", len(vec))
+        print("Embedding vector length:", len(vec))
 
         # Test LLM
         llm = loader.load_llm()
-        print("✅ LLM loaded:", llm)
+        print("LLM loaded:", llm)
 
         res = llm.invoke("Say hello in one line.")
-        print("✅ LLM Response:", getattr(res, "content", res))
+        print("LLM Response:", getattr(res, "content", res))
 
     except Exception as e:
         log.error(f"Fatal error in ModelLoader: {e}")
